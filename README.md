@@ -15,7 +15,27 @@ A minimal demo app (Flask) and an AI-assisted exploratory testing tool that capt
    - `python demo_app/app.py`
    - App runs at http://localhost:5000
 
-3. Run exploratory tool:
-   - `python tools/exploratory_notebook.py --pre-url http://localhost:5000/?variant=A --post-url http://localhost:5000/?variant=B --out reports --provider openai --model gpt-4o-mini`
+3. Run exploratory tool (single page):
+   - Home variant diff:
+     - `python tools/exploratory_notebook.py --pre-url http://localhost:5000/?variant=A --post-url http://localhost:5000/?variant=B --out reports --provider openai --model gpt-4o-mini --scenario home`
+   - Products variant diff:
+     - `python tools/exploratory_notebook.py --pre-url http://localhost:5000/products?variant=A --post-url http://localhost:5000/products?variant=B --out reports --provider openai --model gpt-4o-mini --scenario products`
 
-Set `OPENAI_API_KEY` to enable LLM insights. Without it, the tool still captures and diffs.
+4. Run a batch with YAML (multi-page):
+   - Create `scenarios/demo.yaml`:
+     ```yaml
+     runs:
+       - name: home
+         pre_url: "http://localhost:5000/?variant=A"
+         post_url: "http://localhost:5000/?variant=B"
+       - name: products
+         pre_url: "http://localhost:5000/products?variant=A"
+         post_url: "http://localhost:5000/products?variant=B"
+     ```
+   - Execute:
+     - `python tools/exploratory_notebook.py batch --scenario-file scenarios/demo.yaml --out reports --provider openai --model gpt-4o-mini`
+   - Open `reports/index.html` to navigate to each report.
+
+Notes:
+- Set `OPENAI_API_KEY` in a local `.env` at repo root (auto-loaded) or as an environment variable.
+- Reports and `.env` are git-ignored by default.

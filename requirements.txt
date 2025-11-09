@@ -10,3 +10,4 @@ lxml
 html5lib
 openai
 python-dotenv
+PyYAML

@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Exploratory Test Insight</title>
+  <title>Exploratory Test Insight{% if meta.scenario %} - {{ meta.scenario }}{% endif %}</title>
   <style>
     body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 24px; }
     h1 { margin-top: 0; }
@@ -11,11 +11,26 @@
     img { max-width: 100%; border: 1px solid #ddd; }
     pre { background: #f7f7f7; padding: 12px; overflow: auto; }
     .small { color:#666; font-size: 12px; }
+    .note { background:#f7f7ff; border:1px solid #e0e0ff; padding:12px; border-radius:6px; }
+    .meta { font-size: 13px; color:#444; }
   </style>
 </head>
 <body>
-  <h1>Exploratory Test Insight</h1>
-  <div class="small">URL A: {{ meta.pre_url }} | URL B: {{ meta.post_url }} | Viewport: {{ meta.viewport }} | Timestamp: {{ meta.timestamp }}</div>
+  <h1>Exploratory Test Insight{% if meta.scenario %} - {{ meta.scenario }}{% endif %}</h1>
+  <div class="meta">
+    <div><strong>Scenario:</strong> {{ meta.scenario or 'n/a' }} | <strong>Path:</strong> A={{ meta.path.pre if meta.path else '' }} / B={{ meta.path.post if meta.path else '' }}</div>
+    <div><strong>URL A:</strong> {{ meta.pre_url }} | <strong>URL B:</strong> {{ meta.post_url }} | <strong>Viewport:</strong> {{ meta.viewport }} | <strong>Timestamp:</strong> {{ meta.timestamp }}</div>
+  </div>
+
+  <div class="note" style="margin-top:12px;">
+    <strong>How to read this report</strong>
+    <ul>
+      <li><strong>Pre (A)</strong> and <strong>Post (B)</strong> show the UI before and after the change.</li>
+      <li><strong>Visual Diff</strong> overlays a heatmap on B; warmer colors highlight visual differences.</li>
+      <li><strong>DOM Diff</strong> summarizes structural/text changes (counts, titles, buttons).</li>
+      <li><strong>LLM sections</strong> are grounded in the DOM context for this scenario and should reference concrete selectors or text.</li>
+    </ul>
+  </div>
 
   <div class="section grid">
     <div>
@@ -31,16 +46,21 @@
   <div class="section">
     <h3>Visual Diff (SSIM heatmap)</h3>
     <img src="{{ paths.visual_diff }}" alt="visual diff">
+    <div class="small">Legend: grayscale areas show low change; red areas indicate stronger change.
+    Overlays are approximate; verify with DOM Diff and screenshots.</div>
   </div>
 
   <div class="section">
     <h3>DOM Diff (summary)</h3>
     <pre>{{ dom.summary }}</pre>
+    <div class="small">This summary is derived from HTML of A vs B and may omit subtle style/layout differences.
+    Use it to guide what the LLM should focus on.</div>
   </div>
 
   <div class="section">
     <h3>LLM: Functional Change Summary</h3>
     <p>{{ llm.functional_change or 'LLM disabled or no key provided.' }}</p>
+    <div class="small">The summary is constrained to the facts visible in this page’s DOM and metadata.</div>
   </div>
 
   <div class="section">
@@ -49,9 +69,10 @@
       <ul>
         {% for t in llm.test_ideas %}
           <li><strong>{{ t.title }}</strong><br/>
-            Steps: {{ '; '.join(t.steps) }}<br/>
+            {% if t.selector %}Selector: <code>{{ t.selector }}</code><br/>{% endif %}
+            Steps: {{ '; '.join(t.steps or []) }}<br/>
             Expected: {{ t.expected }}<br/>
-            Oracles: {{ '; '.join(t.oracles) }}<br/>
+            Oracles: {{ '; '.join(t.oracles or []) }}<br/>
             Risk: {{ t.risk }}
           </li>
         {% endfor %}
@@ -69,6 +90,12 @@
       </ul>
     {% else %}
       <p class="small">No risks identified (LLM disabled or failed).</p>
+    {% endif %}
+    {% if llm.regression_hotspots %}
+      <h4>Regression Hotspots</h4>
+      <ul>
+        {% for h in llm.regression_hotspots %}<li>{{ h }}</li>{% endfor %}
+      </ul>
     {% endif %}
   </div>
 </body>

@@ -1,0 +1,7 @@
+runs:
+  - name: home
+    pre_url: "http://localhost:5000/?variant=A"
+    post_url: "http://localhost:5000/?variant=B"
+  - name: products
+    pre_url: "http://localhost:5000/products?variant=A"
+    post_url: "http://localhost:5000/products?variant=B"
