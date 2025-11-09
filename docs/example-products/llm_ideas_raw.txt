@@ -1,0 +1,58 @@
+{
+  "ideas": [
+    {
+      "title": "Verify Table Header Change",
+      "selector": "[aria-label=products-table]",
+      "steps": [
+        "Navigate to the Products page.",
+        "Locate the table with the aria-label 'products-table'.",
+        "Check the headers of the table."
+      ],
+      "expected": "The table should have headers: 'Name', 'Price', 'Rating'.",
+      "oracles": [
+        "The table headers should include 'Rating' in addition to 'Name' and 'Price'."
+      ],
+      "risk": "Medium - Ensures that the new column is displayed correctly."
+    },
+    {
+      "title": "Check for Missing CTA Button",
+      "selector": "[aria-label=cta]",
+      "steps": [
+        "Navigate to the Products page.",
+        "Check for the presence of the element with aria-label 'cta'."
+      ],
+      "expected": "The CTA button should not be present.",
+      "oracles": [
+        "The element with aria-label 'cta' should not exist."
+      ],
+      "risk": "Low - Confirms that the button is intentionally removed."
+    },
+    {
+      "title": "Verify Incidents Chip Absence",
+      "selector": "[aria-label=incidents-chip]",
+      "steps": [
+        "Navigate to the Products page.",
+        "Check for the presence of the element with aria-label 'incidents-chip'."
+      ],
+      "expected": "The incidents chip should not be present.",
+      "oracles": [
+        "The element with aria-label 'incidents-chip' should not exist."
+      ],
+      "risk": "Low - Validates that the chip is intentionally removed."
+    },
+    {
+      "title": "Check Column Order in Products Table",
+      "selector": "[aria-label=products-table]",
+      "steps": [
+        "Navigate to the Products page.",
+        "Locate the table with the aria-label 'products-table'.",
+        "Check the order of the columns."
+      ],
+      "expected": "The columns should be in the order: 'Name', 'Price', 'Rating'.",
+      "oracles": [
+        "The first column should be 'Name', the second should be 'Price', and the third should be 'Rating'."
+      ],
+      "risk": "Medium - Ensures that the new column is correctly positioned."
+    }
+  ]
+}
