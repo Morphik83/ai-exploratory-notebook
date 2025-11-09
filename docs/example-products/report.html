@@ -1,0 +1,127 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Exploratory Test Insight - products</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 24px; }
+    h1 { margin-top: 0; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .section { margin-bottom: 24px; }
+    img { max-width: 100%; border: 1px solid #ddd; }
+    pre { background: #f7f7f7; padding: 12px; overflow: auto; }
+    .small { color:#666; font-size: 12px; }
+    .note { background:#f7f7ff; border:1px solid #e0e0ff; padding:12px; border-radius:6px; }
+    .meta { font-size: 13px; color:#444; }
+  </style>
+</head>
+<body>
+  <h1>Exploratory Test Insight - products</h1>
+  <div class="meta">
+    <div><strong>Scenario:</strong> products | <strong>Path:</strong> A=/products / B=/products</div>
+    <div><strong>URL A:</strong> http://localhost:5000/products?variant=A | <strong>URL B:</strong> http://localhost:5000/products?variant=B | <strong>Viewport:</strong> 1280,800 | <strong>Timestamp:</strong> 2025-11-09 19:22:10</div>
+  </div>
+
+  <div class="note" style="margin-top:12px;">
+    <strong>How to read this report</strong>
+    <ul>
+      <li><strong>Pre (A)</strong> and <strong>Post (B)</strong> show the UI before and after the change.</li>
+      <li><strong>Visual Diff</strong> overlays a heatmap on B; warmer colors highlight visual differences.</li>
+      <li><strong>DOM Diff</strong> summarizes structural/text changes (counts, titles, buttons).</li>
+      <li><strong>LLM sections</strong> are grounded in the DOM context for this scenario and should reference concrete selectors or text.</li>
+    </ul>
+  </div>
+
+  <div class="section grid">
+    <div>
+      <h3>Pre (A)</h3>
+      <img src="pre.png" alt="pre">
+    </div>
+    <div>
+      <h3>Post (B)</h3>
+      <img src="post.png" alt="post">
+    </div>
+  </div>
+
+  <div class="section">
+    <h3>Visual Diff (SSIM heatmap)</h3>
+    <img src="visual_diff.png" alt="visual diff">
+    <div class="small">Legend: grayscale areas show low change; red areas indicate stronger change.
+    Overlays are approximate; verify with DOM Diff and screenshots.</div>
+  </div>
+
+  <div class="section">
+    <h3>DOM Diff (summary)</h3>
+    <pre>Text length delta: +34
+Links: 4 -> 4
+Buttons: 0 -> 0
+Title changed: 'Products - Demo App (Variant A)' -> 'Products - Demo App (Variant B)'
+<th> count: 2 -> 3
+<td> count: 8 -> 12</pre>
+    <div class="small">This summary is derived from HTML of A vs B and may omit subtle style/layout differences.
+    Use it to guide what the LLM should focus on.</div>
+  </div>
+
+  <div class="section">
+    <h3>LLM: Functional Change Summary</h3>
+    <p>In the transition from Variant A to Variant B of the UI, the title has changed from "Products - Demo App (Variant A)" to "Products - Demo App (Variant B)". The table structure has been modified to include an additional column for "Rating", increasing the total number of table headers from two to three. Consequently, the number of table data cells has also increased from eight to twelve, reflecting the addition of new data associated with the new "Rating" column. Other UI elements, such as buttons and specific components like the CTA and incidents chip, remain unchanged and do not exist in either variant.</p>
+    <div class="small">The summary is constrained to the facts visible in this page’s DOM and metadata.</div>
+  </div>
+
+  <div class="section">
+    <h3>LLM: High-Value Test Ideas</h3>
+    
+      <ul>
+        
+          <li><strong>Verify Table Header Change</strong><br/>
+            Selector: <code>[aria-label=products-table]</code><br/>
+            Steps: Navigate to the Products page.; Locate the table with the aria-label 'products-table'.; Check the headers of the table.<br/>
+            Expected: The table should have headers: 'Name', 'Price', 'Rating'.<br/>
+            Oracles: The table headers should include 'Rating' in addition to 'Name' and 'Price'.<br/>
+            Risk: Medium - Ensures that the new column is displayed correctly.
+          </li>
+        
+          <li><strong>Check for Missing CTA Button</strong><br/>
+            Selector: <code>[aria-label=cta]</code><br/>
+            Steps: Navigate to the Products page.; Check for the presence of the element with aria-label 'cta'.<br/>
+            Expected: The CTA button should not be present.<br/>
+            Oracles: The element with aria-label 'cta' should not exist.<br/>
+            Risk: Low - Confirms that the button is intentionally removed.
+          </li>
+        
+          <li><strong>Verify Incidents Chip Absence</strong><br/>
+            Selector: <code>[aria-label=incidents-chip]</code><br/>
+            Steps: Navigate to the Products page.; Check for the presence of the element with aria-label 'incidents-chip'.<br/>
+            Expected: The incidents chip should not be present.<br/>
+            Oracles: The element with aria-label 'incidents-chip' should not exist.<br/>
+            Risk: Low - Validates that the chip is intentionally removed.
+          </li>
+        
+          <li><strong>Check Column Order in Products Table</strong><br/>
+            Selector: <code>[aria-label=products-table]</code><br/>
+            Steps: Navigate to the Products page.; Locate the table with the aria-label 'products-table'.; Check the order of the columns.<br/>
+            Expected: The columns should be in the order: 'Name', 'Price', 'Rating'.<br/>
+            Oracles: The first column should be 'Name', the second should be 'Price', and the third should be 'Rating'.<br/>
+            Risk: Medium - Ensures that the new column is correctly positioned.
+          </li>
+        
+      </ul>
+    
+  </div>
+
+  <div class="section">
+    <h3>LLM: Risks & Regression Hotspots</h3>
+    
+      <ul>
+        <li>The absence of the '[aria-label=cta]' button in Variant B may lead to a loss of functionality for users expecting to take action.</li><li>The '[aria-label=incidents-chip]' not being present in both variants could indicate missing alerts or notifications that are critical for user awareness.</li><li>The addition of the 'Rating' column in Variant B could introduce sorting or filtering issues that were not present in Variant A.</li>
+      </ul>
+    
+    
+      <h4>Regression Hotspots</h4>
+      <ul>
+        <li>The '[aria-label=products-table]' selector should be closely monitored for any discrepancies in data rendering between the two variants.</li><li>The 'Price' column in the products table may have different formatting or data types that need to be validated after the change.</li><li>The overall layout and responsiveness of the '[aria-label=products-table]' should be tested to ensure that the addition of the 'Rating' column does not disrupt the user interface.</li>
+      </ul>
+    
+  </div>
+</body>
+</html>
