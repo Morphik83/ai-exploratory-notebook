@@ -18,6 +18,13 @@ try:
 except Exception:  # pragma: no cover
     OpenAI = None  # type: ignore
 
+# Optional dotenv (.env) loader
+try:  # pragma: no cover
+    from dotenv import load_dotenv
+    load_dotenv()
+except Exception:
+    pass
+
 app = typer.Typer(add_completion=False)
 
 
