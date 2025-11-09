@@ -11,6 +11,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 from playwright.sync_api import sync_playwright
 from bs4 import BeautifulSoup
 from PIL import Image, ImageChops, ImageFilter, ImageOps
+import urllib.parse as _urlparse
 
 # Optional OpenAI
 try:
@@ -24,6 +25,12 @@ try:  # pragma: no cover
     load_dotenv()
 except Exception:
     pass
+
+# Optional YAML loader for batch scenarios
+try:  # pragma: no cover
+    import yaml
+except Exception:
+    yaml = None  # type: ignore
 
 app = typer.Typer(add_completion=False)
 
@@ -100,6 +107,61 @@ def dom_diff_summary(pre_html: Path, post_html: Path) -> str:
     return "\n".join(lines)
 
 
+def extract_dom_context(pre_html: Path, post_html: Path) -> Dict[str, Any]:
+    """Collect small, high-signal DOM facts to ground the LLM.
+    - Titles, headers, button labels with aria-label, table headers, known app selectors.
+    """
+    pre = BeautifulSoup(pre_html.read_text(encoding="utf-8"), "lxml")
+    post = BeautifulSoup(post_html.read_text(encoding="utf-8"), "lxml")
+
+    def buttons(bs):
+        out = []
+        for b in bs.find_all("button"):
+            label = b.get("aria-label") or ""
+            text = (b.get_text(" ") or "").strip()
+            out.append({"aria_label": label, "text": text})
+        return out
+
+    def headers(bs):
+        out = []
+        for h in bs.find_all(["h1", "h2", "h3"]):
+            out.append({"tag": h.name, "text": (h.get_text(" ") or "").strip()})
+        return out
+
+    def table_headers(bs):
+        return [ (th.get_text(" ").strip() or "") for th in bs.find_all("th") ]
+
+    def exists_selector(bs, selector):
+        try:
+            return bool(bs.select(selector))
+        except Exception:
+            return False
+
+    candidates = [
+        "[aria-label=cta]",
+        "[aria-label=incidents-chip]",
+        "[aria-label=products-table]",
+    ]
+
+    return {
+        "pre": {
+            "title": pre.title.text if pre.title else "",
+            "headers": headers(pre),
+            "buttons": buttons(pre),
+            "table_headers": table_headers(pre),
+            "exists": {sel: exists_selector(pre, sel) for sel in candidates},
+        },
+        "post": {
+            "title": post.title.text if post.title else "",
+            "headers": headers(post),
+            "buttons": buttons(post),
+            "table_headers": table_headers(post),
+            "exists": {sel: exists_selector(post, sel) for sel in candidates},
+        },
+        "candidates": candidates,
+    }
+
+
 def render_report(template_dir: Path, out_dir: Path, context: Dict[str, Any]) -> Path:
     env = Environment(loader=FileSystemLoader(str(template_dir)), autoescape=select_autoescape(["html"]))
     tpl = env.get_template("report.html.j2")
@@ -117,7 +179,7 @@ def run_llm(provider: str, model: str, meta: Dict[str, Any], dom_summary: str) -
         return {"functional_change": None, "test_ideas": [], "risks": []}
     client = OpenAI(api_key=api_key)
 
-    def chat(prompt: str) -> str:
+    def chat(prompt: str, response_format: Optional[Dict[str, Any]] = None) -> str:
         try:
             resp = client.chat.completions.create(
                 model=model,
@@ -126,54 +188,95 @@ def run_llm(provider: str, model: str, meta: Dict[str, Any], dom_summary: str) -
                     {"role": "user", "content": prompt},
                 ],
                 temperature=0.2,
+                response_format=response_format if response_format else None,
             )
             return resp.choices[0].message.content or ""
         except Exception as e:
             return f"LLM error: {e}"
 
     fc_prompt = (
-        "Summarize the likely functional change between two UI variants based on the metadata and DOM summary.\n"
-        f"Metadata: {json.dumps(meta)}\nDOM summary: {dom_summary}\n"
-        "Provide a concise 1-2 paragraph summary."
+        "Task: Summarize the specific functional change between two UI variants.\n"
+        "Constraints:\n"
+        "- Ground strictly in provided facts. Do not invent features.\n"
+        "- Reference concrete UI elements (headers, buttons, table columns).\n"
+        "Inputs follow as JSON.\n"
+        f"Inputs: {json.dumps(meta)}\nDOM summary: {dom_summary}\n"
+        "Output: 3-6 sentences, no bullets."
     )
     functional_change = chat(fc_prompt)
 
     ideas_prompt = (
-        "Based on the change, propose 6-10 high-value exploratory test ideas. "
-        "For each, include: title; 3-6 steps; expected result; oracles; risk area. "
-        "Return as concise bullet points."
+        "Task: Propose focused exploratory tests tied to observed diffs.\n"
+        "Constraints:\n"
+        "- 5-8 ideas. Each MUST cite a selector from candidates or an exact header/button text from context.\n"
+        "- Steps must be specific to this page.\n"
+        "- Expected and oracles must be verifiable (status text, aria attributes, column order).\n"
+        "- Reject generic items. If insufficient evidence, output an empty list.\n"
+        "Inputs: JSON context is provided.\n"
+        "Return strict JSON object: {\n  \"ideas\": [ {\n    \"title\": str, \n    \"selector\": str, \n    \"steps\": [str], \n    \"expected\": str, \n    \"oracles\": [str], \n    \"risk\": str\n  } ]\n}"
     )
-    ideas_text = chat(ideas_prompt)
+    ideas_text = chat(ideas_prompt + "\nContext: " + json.dumps(meta.get("dom_ctx", {})), response_format={"type": "json_object"})
 
     risks_prompt = (
-        "List concrete risks and regression hotspots (selectors/modules) given the change. Return 5-8 bullets."
+        "Task: List concrete risks & regression hotspots tied to observed diffs.\n"
+        "Constraints:\n"
+        "- 4-8 items. Each MUST reference a selector from candidates or an exact column/button/header text from context.\n"
+        "- No generic SDLC items.\n"
+        "Return strict JSON object: {\n  \"risks\": [str], \n  \"regression_hotspots\": [str]\n}"
     )
-    risks_text = chat(risks_prompt)
+    risks_text = chat(risks_prompt + "\nContext: " + json.dumps(meta.get("dom_ctx", {})), response_format={"type": "json_object"})
 
     # Keep free-form for now; template will display text or lists if parsed.
-    ideas = []
-    if ideas_text:
-        ideas = [{"title": line.strip(), "steps": [], "expected": "", "oracles": [], "risk": ""}
-                 for line in ideas_text.split("\n") if line.strip()]
-    risks = [line.strip() for line in risks_text.split("\n") if line.strip()]
+    ideas: List[Dict[str, Any]] = []
+    try:
+        parsed = json.loads(ideas_text)
+        if isinstance(parsed, dict):
+            for key in ("ideas", "tests", "suggestions", "items"):
+                if isinstance(parsed.get(key), list):
+                    ideas = parsed.get(key, [])
+                    break
+        elif isinstance(parsed, list):
+            # legacy fallback if model ignored wrapper
+            ideas = parsed
+    except Exception:
+        # last resort: line-based fallback
+        lines = [ln.strip("- •\t ") for ln in (ideas_text or "").splitlines() if ln.strip()]
+        for ln in lines:
+            ideas.append({"title": ln, "selector": "", "steps": [], "expected": "", "oracles": [], "risk": ""})
+
+    risks: List[str] = []
+    regression_hotspots: List[str] = []
+    try:
+        parsed_r = json.loads(risks_text)
+        if isinstance(parsed_r, dict):
+            risks = parsed_r.get("risks", []) or []
+            regression_hotspots = parsed_r.get("regression_hotspots", []) or []
+        elif isinstance(parsed_r, list):
+            risks = parsed_r
+    except Exception:
+        # fallback: split lines
+        risks = [ln.strip("- •\t ") for ln in (risks_text or "").splitlines() if ln.strip()]
 
     return {
         "functional_change": functional_change,
         "test_ideas": ideas,
         "risks": risks,
+        "regression_hotspots": regression_hotspots,
+        "raw_ideas_text": ideas_text,
+        "raw_risks_text": risks_text,
     }
 
 
-@app.command()
-def main(
-    pre_url: str = typer.Option(..., help="Pre-change URL (variant A)"),
-    post_url: str = typer.Option(..., help="Post-change URL (variant B)"),
-    out: Path = typer.Option(Path("reports"), help="Output directory"),
-    provider: str = typer.Option("openai", help="LLM provider: openai or none"),
-    model: str = typer.Option("gpt-4o-mini", help="OpenAI model name"),
-    viewport: str = typer.Option("1280,800", help="Viewport WxH, e.g., 1280,800"),
-    headless: bool = typer.Option(True, help="Headless browser"),
-):
+def run_once(
+    pre_url: str,
+    post_url: str,
+    out: Path,
+    provider: str,
+    model: str,
+    viewport: str,
+    headless: bool,
+    scenario: str = "",
+) -> Path:
     ensure_dir(out)
     artifacts = out / f"run_{int(time.time())}"
     ensure_dir(artifacts)
@@ -195,15 +298,31 @@ def main(
     visual_diff(pre_png, post_png, vis_path)
 
     dom_summary = dom_diff_summary(pre_html, post_html)
+    dom_ctx = extract_dom_context(pre_html, post_html)
+
+    def _path(url: str) -> str:
+        try:
+            return _urlparse.urlparse(url).path or "/"
+        except Exception:
+            return ""
 
     meta = {
         "pre_url": pre_url,
         "post_url": post_url,
         "viewport": viewport,
         "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "dom_ctx": dom_ctx,
+        "scenario": scenario,
+        "path": {"pre": _path(pre_url), "post": _path(post_url)},
     }
 
     llm_out = run_llm(provider, model, meta, dom_summary)
+    # Write raw LLM outputs for debugging
+    try:
+        (artifacts / "llm_ideas_raw.txt").write_text(llm_out.get("raw_ideas_text", ""), encoding="utf-8")
+        (artifacts / "llm_risks_raw.txt").write_text(llm_out.get("raw_risks_text", ""), encoding="utf-8")
+    except Exception:
+        pass
 
     # Paths must be relative to the artifacts directory where report.html is saved
     context = {
@@ -219,6 +338,52 @@ def main(
 
     report_path = render_report(Path(__file__).parent / "templates", artifacts, context)
     rprint(f"[green]Report generated:[/green] {report_path}")
+    return report_path
+
+
+@app.command()
+def main(
+    pre_url: str = typer.Option(..., help="Pre-change URL (variant A)"),
+    post_url: str = typer.Option(..., help="Post-change URL (variant B)"),
+    out: Path = typer.Option(Path("reports"), help="Output directory"),
+    provider: str = typer.Option("openai", help="LLM provider: openai or none"),
+    model: str = typer.Option("gpt-4o-mini", help="OpenAI model name"),
+    viewport: str = typer.Option("1280,800", help="Viewport WxH, e.g., 1280,800"),
+    headless: bool = typer.Option(True, help="Headless browser"),
+    scenario: str = typer.Option("", help="Scenario name (e.g., home/products)"),
+):
+    run_once(pre_url, post_url, out, provider, model, viewport, headless, scenario=scenario)
+
+
+@app.command()
+def batch(
+    scenario_file: Path = typer.Option(..., help="YAML file with runs: [{name, pre_url, post_url}]"),
+    out: Path = typer.Option(Path("reports"), help="Output directory for all runs"),
+    provider: str = typer.Option("openai", help="LLM provider: openai or none"),
+    model: str = typer.Option("gpt-4o-mini", help="OpenAI model name"),
+    viewport: str = typer.Option("1280,800", help="Viewport WxH, e.g., 1280,800"),
+    headless: bool = typer.Option(True, help="Headless browser"),
+):
+    if yaml is None:
+        raise typer.Exit("PyYAML not installed. Run: pip install PyYAML")
+    data = yaml.safe_load(scenario_file.read_text(encoding="utf-8"))
+    runs = data.get("runs") if isinstance(data, dict) else None
+    if not runs:
+        raise typer.Exit("Scenario file must contain 'runs: - {name, pre_url, post_url}'")
+    index_lines = ["<html><body><h1>Exploratory Runs</h1><ul>"]
+    for item in runs:
+        name = item.get("name") or "run"
+        pre = item.get("pre_url")
+        post = item.get("post_url")
+        if not pre or not post:
+            rprint(f"[yellow]Skipping invalid run entry (missing URLs):[/yellow] {item}")
+            continue
+        rpt = run_once(pre, post, out, provider, model, viewport, headless, scenario=name)
+        rel = Path(rpt).relative_to(out)
+        index_lines.append(f"<li><a href='{rel.as_posix()}'>{name}</a></li>")
+    index_lines.append("</ul></body></html>")
+    (out / "index.html").write_text("\n".join(index_lines), encoding="utf-8")
+    rprint(f"[green]Index generated:[/green] {(out / 'index.html')}")
 
 
 if __name__ == "__main__":
