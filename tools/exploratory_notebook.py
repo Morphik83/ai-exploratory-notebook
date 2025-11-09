@@ -10,10 +10,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from playwright.sync_api import sync_playwright
 from bs4 import BeautifulSoup
-
-import numpy as np
-import cv2
-from skimage.metrics import structural_similarity as ssim
+from PIL import Image, ImageChops, ImageFilter, ImageOps
 
 # Optional OpenAI
 try:
@@ -40,23 +37,26 @@ def capture_page(page, url: str, out_dir: Path, name: str, wait_ms: int = 500) -
 
 
 def visual_diff(pre_img: Path, post_img: Path, out_path: Path) -> None:
-    a = cv2.imread(str(pre_img))
-    b = cv2.imread(str(post_img))
-    if a is None or b is None:
-        raise RuntimeError("Failed to read screenshots for diff.")
+    a = Image.open(pre_img).convert("RGB")
+    b = Image.open(post_img).convert("RGB")
     # Resize to smallest common size
-    h = min(a.shape[0], b.shape[0])
-    w = min(a.shape[1], b.shape[1])
-    a = cv2.resize(a, (w, h))
-    b = cv2.resize(b, (w, h))
-    a_gray = cv2.cvtColor(a, cv2.COLOR_BGR2GRAY)
-    b_gray = cv2.cvtColor(b, cv2.COLOR_BGR2GRAY)
-    score, diff = ssim(a_gray, b_gray, full=True)
-    diff = (1 - diff)  # higher means more different
-    diff_norm = (255 * (diff / diff.max())).astype("uint8") if diff.max() > 0 else diff.astype("uint8")
-    diff_color = cv2.applyColorMap(diff_norm, cv2.COLORMAP_JET)
-    blend = cv2.addWeighted(b, 0.7, diff_color, 0.6, 0)
-    cv2.imwrite(str(out_path), blend)
+    w = min(a.width, b.width)
+    h = min(a.height, b.height)
+    a = a.resize((w, h))
+    b = b.resize((w, h))
+    # Blur to reduce noise
+    a_blur = a.convert("L").filter(ImageFilter.GaussianBlur(radius=2))
+    b_blur = b.convert("L").filter(ImageFilter.GaussianBlur(radius=2))
+    # Absolute difference
+    diff = ImageChops.difference(a_blur, b_blur)
+    # Enhance and colorize as heatmap
+    diff = ImageOps.autocontrast(diff)
+    heat = ImageOps.colorize(diff, black="#000000", white="#ff0000")
+    # Blend heatmap over post image
+    heat_rgba = heat.convert("RGBA")
+    b_rgba = b.convert("RGBA")
+    blended = Image.blend(b_rgba, heat_rgba, alpha=0.4)
+    blended.convert("RGB").save(out_path)
 
 
 def dom_diff_summary(pre_html: Path, post_html: Path) -> str:
@@ -198,12 +198,13 @@ def main(
 
     llm_out = run_llm(provider, model, meta, dom_summary)
 
+    # Paths must be relative to the artifacts directory where report.html is saved
     context = {
         "meta": meta,
         "paths": {
-            "screenshot_pre": str(pre_png.relative_to(out)),
-            "screenshot_post": str(post_png.relative_to(out)),
-            "visual_diff": str(vis_path.relative_to(out)),
+            "screenshot_pre": str(pre_png.relative_to(artifacts)),
+            "screenshot_post": str(post_png.relative_to(artifacts)),
+            "visual_diff": str(vis_path.relative_to(artifacts)),
         },
         "dom": {"summary": dom_summary},
         "llm": llm_out,
