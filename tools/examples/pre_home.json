@@ -1,0 +1,4 @@
+[
+  {"type": "goto", "url": "http://localhost:5000/?variant=A"},
+  {"type": "wait_for_timeout", "ms": 500}
+]

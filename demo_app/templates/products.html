@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+{% block content %}
+  <h1>Products</h1>
+  <p>Default sort: <strong>{{ default_sort }}</strong></p>
+  <table aria-label="products-table">
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Price</th>
+        {% if show_rating_column %}<th>Rating</th>{% endif %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in products %}
+      <tr>
+        <td>{{ p.name }}</td>
+        <td>{{ '%.2f'|format(p.price) }}</td>
+        {% if show_rating_column %}<td>{{ '%.1f'|format(p.rating) }}</td>{% endif %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% endblock %}

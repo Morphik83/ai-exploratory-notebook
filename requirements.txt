@@ -1,0 +1,14 @@
+flask
+playwright
+jinja2
+pydantic
+typer
+rich
+opencv-python
+numpy
+pillow
+beautifulsoup4
+lxml
+html5lib
+scikit-image
+openai

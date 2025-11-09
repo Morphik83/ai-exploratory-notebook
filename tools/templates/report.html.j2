@@ -1,0 +1,75 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Exploratory Test Insight</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 24px; }
+    h1 { margin-top: 0; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .section { margin-bottom: 24px; }
+    img { max-width: 100%; border: 1px solid #ddd; }
+    pre { background: #f7f7f7; padding: 12px; overflow: auto; }
+    .small { color:#666; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <h1>Exploratory Test Insight</h1>
+  <div class="small">URL A: {{ meta.pre_url }} | URL B: {{ meta.post_url }} | Viewport: {{ meta.viewport }} | Timestamp: {{ meta.timestamp }}</div>
+
+  <div class="section grid">
+    <div>
+      <h3>Pre (A)</h3>
+      <img src="{{ paths.screenshot_pre }}" alt="pre">
+    </div>
+    <div>
+      <h3>Post (B)</h3>
+      <img src="{{ paths.screenshot_post }}" alt="post">
+    </div>
+  </div>
+
+  <div class="section">
+    <h3>Visual Diff (SSIM heatmap)</h3>
+    <img src="{{ paths.visual_diff }}" alt="visual diff">
+  </div>
+
+  <div class="section">
+    <h3>DOM Diff (summary)</h3>
+    <pre>{{ dom.summary }}</pre>
+  </div>
+
+  <div class="section">
+    <h3>LLM: Functional Change Summary</h3>
+    <p>{{ llm.functional_change or 'LLM disabled or no key provided.' }}</p>
+  </div>
+
+  <div class="section">
+    <h3>LLM: High-Value Test Ideas</h3>
+    {% if llm.test_ideas %}
+      <ul>
+        {% for t in llm.test_ideas %}
+          <li><strong>{{ t.title }}</strong><br/>
+            Steps: {{ '; '.join(t.steps) }}<br/>
+            Expected: {{ t.expected }}<br/>
+            Oracles: {{ '; '.join(t.oracles) }}<br/>
+            Risk: {{ t.risk }}
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="small">No ideas (LLM disabled or failed).</p>
+    {% endif %}
+  </div>
+
+  <div class="section">
+    <h3>LLM: Risks & Regression Hotspots</h3>
+    {% if llm.risks %}
+      <ul>
+        {% for r in llm.risks %}<li>{{ r }}</li>{% endfor %}
+      </ul>
+    {% else %}
+      <p class="small">No risks identified (LLM disabled or failed).</p>
+    {% endif %}
+  </div>
+</body>
+</html>

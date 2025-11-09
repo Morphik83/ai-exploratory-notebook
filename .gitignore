@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.env
+.venv/
+venv/
+.env.local
+.env.*
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Reports and artifacts
+reports/
+artifacts/
+logs/
+
+# Playwright
+playwright-report/
+playwright/.cache/
+
+# Node (if added later)
+node_modules/
